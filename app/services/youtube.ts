@@ -1,4 +1,6 @@
-const YOUTUBE_API_KEY = process.env.NEXT_PUBLIC_YOUTUBE_API_KEY;
+"use server";
+
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 console.log('Loaded API Key:', YOUTUBE_API_KEY);
 const BASE_URL = 'https://www.googleapis.com/youtube/v3';
 
