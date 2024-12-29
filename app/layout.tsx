@@ -6,8 +6,23 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Learning Platform",
+  title: "ad-bc",
   description: "Interactive video learning platform",
+  icons: {
+    icon: [
+      {
+        url: '/favicon.ico',
+        sizes: 'any'
+      },
+      {
+        url: '/icon.svg',
+        type: 'image/svg+xml'
+      }
+    ],
+    apple: {
+      url: '/apple-touch-icon.png',
+    }
+  }
 };
 
 export default function RootLayout({
