@@ -1,10 +1,10 @@
 'use client';
 import React from 'react';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import SearchBar from './components/SearchBar';
 import VideoList from './components/VideoList';
-import { searchVideos, getVideoDetails } from './services/youtube';
+import { searchVideos, getVideoDetails, getVideoTranscript, findTranscriptSegmentAtTime, type TranscriptSegment } from './services/youtube';
 import { getChatResponse } from './services/openai';
 
 export default function Home() {
@@ -14,11 +14,31 @@ export default function Home() {
   const [messages, setMessages] = useState<{text: string, isUser: boolean}[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [currentTranscript, setCurrentTranscript] = useState<string>('');
+  const playerRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (selectedVideoId) {
+      getVideoTranscript(selectedVideoId).then(setTranscript);
+    }
+  }, [selectedVideoId]);
+
+  useEffect(() => {
+    const currentSegment = findTranscriptSegmentAtTime(transcript, currentTime);
+    if (currentSegment) {
+      setCurrentTranscript(currentSegment.text);
+    }
+  }, [transcript, currentTime]);
 
   const handleSearch = async (query: string) => {
     const results = await searchVideos(query);
     setVideos(results);
     setSelectedVideoId(null);
+    setTranscript([]);
+    setCurrentTime(0);
+    setCurrentTranscript('');
   };
 
   const handleVideoSelect = async (videoId: string) => {
@@ -28,6 +48,31 @@ export default function Home() {
       setVideoTitle(videoDetails.snippet.title);
     }
   };
+
+  const handleTimeUpdate = (event: MessageEvent) => {
+    if (event.data && typeof event.data === 'object' && 'event' in event.data) {
+      if (event.data.event === 'onStateChange' && event.data.info === 1) {
+        // Video is playing
+        const getCurrentTime = () => {
+          if (playerRef.current && playerRef.current.contentWindow) {
+            playerRef.current.contentWindow.postMessage(
+              JSON.stringify({ event: 'listening' }), 
+              '*'
+            );
+          }
+        };
+        setInterval(getCurrentTime, 1000);
+      }
+    }
+    if (event.data && typeof event.data === 'object' && 'info' in event.data) {
+      setCurrentTime(event.data.info);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener('message', handleTimeUpdate);
+    return () => window.removeEventListener('message', handleTimeUpdate);
+  }, []);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +84,11 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const response = await getChatResponse(userMessage, videoTitle);
+      const response = await getChatResponse(userMessage, {
+        videoTitle,
+        currentTranscript,
+        currentTime,
+      });
       setMessages(prev => [...prev, { text: response, isUser: false }]);
     } catch (error) {
       console.error('Error getting AI response:', error);
@@ -82,9 +131,10 @@ export default function Home() {
             <div className="lg:col-span-8">
               <div className="aspect-video w-full">
                 <iframe
+                  ref={playerRef}
                   width="100%"
                   height="100%"
-                  src={`https://www.youtube.com/embed/${selectedVideoId}`}
+                  src={`https://www.youtube.com/embed/${selectedVideoId}?enablejsapi=1`}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="rounded-lg shadow-lg"
@@ -92,6 +142,11 @@ export default function Home() {
               </div>
               {videoTitle && (
                 <h2 className="mt-4 text-xl font-semibold text-gray-900">{videoTitle}</h2>
+              )}
+              {currentTranscript && (
+                <div className="mt-2 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-gray-700">{currentTranscript}</p>
+                </div>
               )}
             </div>
             

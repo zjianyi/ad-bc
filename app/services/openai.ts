@@ -6,10 +6,27 @@ if (!OPENAI_API_KEY) {
   console.error('OpenAI API key is not configured');
 }
 
-export async function getChatResponse(message: string, videoContext?: string) {
+interface ChatContext {
+  videoTitle?: string;
+  currentTranscript?: string;
+  currentTime?: number;
+  imageContext?: string;
+}
+
+export async function getChatResponse(message: string, context: ChatContext) {
   try {
     console.log('Making request to OpenAI with key:', OPENAI_API_KEY?.slice(0, 10) + '...');
     
+    const systemMessage = `You are a helpful AI tutor. ${
+      context.videoTitle ? 'The user is watching a video about: ' + context.videoTitle : ''
+    }${
+      context.currentTranscript ? '\nCurrent transcript context: ' + context.currentTranscript : ''
+    }${
+      context.currentTime ? '\nCurrent video timestamp: ' + formatTime(context.currentTime) : ''
+    }${
+      context.imageContext ? '\nVisual context from current frame: ' + context.imageContext : ''
+    }`;
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -17,11 +34,11 @@ export async function getChatResponse(message: string, videoContext?: string) {
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4',
         messages: [
           {
             role: 'system',
-            content: `You are a helpful AI tutor. ${videoContext ? 'The user is watching a video about: ' + videoContext : ''}`
+            content: systemMessage
           },
           {
             role: 'user',
@@ -58,4 +75,10 @@ export async function getChatResponse(message: string, videoContext?: string) {
     }
     return 'Sorry, I encountered an error processing your request.';
   }
+}
+
+function formatTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 } 

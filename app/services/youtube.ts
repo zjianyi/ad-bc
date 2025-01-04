@@ -1,8 +1,18 @@
 "use server";
 
+import { YoutubeTranscript } from 'youtube-transcript';
+
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 console.log('Loaded API Key:', YOUTUBE_API_KEY);
 const BASE_URL = 'https://www.googleapis.com/youtube/v3';
+
+export interface TranscriptSegment {
+  text: string;
+  offset: number;
+  duration: number;
+}
+
+let cachedTranscripts: { [key: string]: TranscriptSegment[] } = {};
 
 async function getVideoStats(videoIds: string[]) {
   try {
@@ -107,4 +117,32 @@ export async function getVideoDetails(videoId: string) {
     console.error('Error fetching video details:', error);
     return null;
   }
+}
+
+export async function getVideoTranscript(videoId: string): Promise<TranscriptSegment[]> {
+  try {
+    if (cachedTranscripts[videoId]) {
+      return cachedTranscripts[videoId];
+    }
+
+    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    const formattedTranscript = transcript.map(segment => ({
+      text: segment.text,
+      offset: segment.offset,
+      duration: segment.duration
+    }));
+
+    cachedTranscripts[videoId] = formattedTranscript;
+    return formattedTranscript;
+  } catch (error) {
+    console.error('Error fetching transcript:', error);
+    return [];
+  }
+}
+
+export function findTranscriptSegmentAtTime(transcript: TranscriptSegment[], currentTime: number): TranscriptSegment | null {
+  return transcript.find(segment => 
+    currentTime >= segment.offset / 1000 && 
+    currentTime < (segment.offset + segment.duration) / 1000
+  ) || null;
 } 
