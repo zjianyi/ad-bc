@@ -17,6 +17,7 @@ export default function Home() {
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
   const [currentFrameAnalysis, setCurrentFrameAnalysis] = useState<string>('');
   const playerRef = useRef<HTMLIFrameElement>(null);
+  const ytPlayerRef = useRef<YT.Player | null>(null);
   const playerInitialized = useRef(false);
 
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
@@ -41,14 +42,14 @@ export default function Home() {
       // Initialize player when API is ready
       window.onYouTubeIframeAPIReady = () => {
         if (selectedVideoId && playerRef.current) {
-          new window.YT.Player(playerRef.current, {
+          ytPlayerRef.current = new window.YT.Player(playerRef.current, {
             events: {
-              onStateChange: (event: any) => {
+              onStateChange: (event: YT.OnStateChangeEvent) => {
                 if (event.data === window.YT.PlayerState.PLAYING) {
                   // Update time every second while playing
                   const interval = setInterval(() => {
-                    if (playerRef.current) {
-                      const time = playerRef.current.getCurrentTime();
+                    if (ytPlayerRef.current) {
+                      const time = ytPlayerRef.current.getCurrentTime();
                       setCurrentTime(time);
                     }
                   }, 1000);
