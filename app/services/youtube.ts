@@ -35,7 +35,7 @@ async function getVideoStats(videoIds: string[]) {
   }
 }
 
-function formatViewCount(count: string) {
+async function formatViewCount(count: string) {
   const num = parseInt(count);
   if (num >= 1000000) {
     return `${(num / 1000000).toFixed(1)}M`;
@@ -80,15 +80,17 @@ export async function searchVideos(query: string) {
     const videoIds = data.items.map((item: any) => item.id.videoId);
     const videoStats = await getVideoStats(videoIds);
     
-    return data.items.map((item: any) => ({
+    const formattedResults = await Promise.all(data.items.map(async (item: any) => ({
       id: item.id.videoId,
       title: item.snippet.title,
       thumbnail: item.snippet.thumbnails.medium.url,
       channelTitle: item.snippet.channelTitle,
       publishedAt: new Date(item.snippet.publishedAt).toLocaleDateString(),
       viewCount: videoStats[item.id.videoId]?.viewCount ? 
-        formatViewCount(videoStats[item.id.videoId].viewCount) : 'N/A'
-    }));
+        await formatViewCount(videoStats[item.id.videoId].viewCount) : 'N/A'
+    })));
+
+    return formattedResults;
   } catch (error) {
     console.error('Error fetching videos:', error);
     return [];
@@ -140,7 +142,7 @@ export async function getVideoTranscript(videoId: string): Promise<TranscriptSeg
   }
 }
 
-export function findTranscriptSegmentAtTime(transcript: TranscriptSegment[], currentTime: number): TranscriptSegment | null {
+export async function findTranscriptSegmentAtTime(transcript: TranscriptSegment[], currentTime: number): Promise<TranscriptSegment | null> {
   return transcript.find(segment => 
     currentTime >= segment.offset / 1000 && 
     currentTime < (segment.offset + segment.duration) / 1000

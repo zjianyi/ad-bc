@@ -26,10 +26,13 @@ export default function Home() {
   }, [selectedVideoId]);
 
   useEffect(() => {
-    const currentSegment = findTranscriptSegmentAtTime(transcript, currentTime);
-    if (currentSegment) {
-      setCurrentTranscript(currentSegment.text);
-    }
+    const updateTranscript = async () => {
+      const currentSegment = await findTranscriptSegmentAtTime(transcript, currentTime);
+      if (currentSegment) {
+        setCurrentTranscript(currentSegment.text);
+      }
+    };
+    updateTranscript();
   }, [transcript, currentTime]);
 
   const handleSearch = async (query: string) => {
