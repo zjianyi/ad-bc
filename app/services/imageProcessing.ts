@@ -3,6 +3,7 @@
 import * as tf from '@tensorflow/tfjs';
 import sharp from 'sharp';
 import './tfjs-setup';
+import { IMAGENET_CLASSES } from './imagenet-classes';
 
 const SIMILARITY_THRESHOLD = 0.85; // Adjust this value to control sensitivity
 let previousImageTensor: tf.Tensor | null = null;
@@ -58,18 +59,24 @@ export async function processVideoFrame(imageUrl: string, timestamp: number): Pr
       
       // Get prediction
       const predictions = await model.predict(normalizedInput);
-      const topPrediction = Array.from(await (predictions as tf.Tensor).data())
-        .map((prob, i) => ({ probability: prob, className: i.toString() }))
-        .sort((a, b) => b.probability - a.probability)[0];
+      const probabilities = Array.from(await (predictions as tf.Tensor).data());
+      const topPredictions = probabilities
+        .map((prob, i) => ({ probability: prob, className: IMAGENET_CLASSES[i] }))
+        .sort((a, b) => b.probability - a.probability)
+        .slice(0, 3); // Get top 3 predictions
 
       // Clean up
       model.dispose();
       normalizedInput.dispose();
       (predictions as tf.Tensor).dispose();
 
+      const description = topPredictions
+        .map(pred => `${pred.className} (${(pred.probability * 100).toFixed(1)}%)`)
+        .join(', ');
+
       return {
         shouldProcess: true,
-        description: `Frame shows: ${topPrediction.className} (confidence: ${(topPrediction.probability * 100).toFixed(2)}%)`
+        description: `The frame appears to show: ${description}`
       };
     }
 
