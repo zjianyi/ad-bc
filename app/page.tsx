@@ -4,8 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import SearchBar from './components/SearchBar';
 import VideoList from './components/VideoList';
-import { searchVideos, getVideoDetails, getVideoTranscript, findTranscriptSegmentAtTime, type TranscriptSegment } from './services/youtube';
+import { searchVideos, getVideoDetails, getVideoTranscript, findTranscriptSegmentAtTime, type TranscriptSegment, getVideoThumbnailUrl } from './services/youtube';
 import { getChatResponse } from './services/openai';
+import { processVideoFrame } from './services/imageProcessing';
 
 export default function Home() {
   const [videos, setVideos] = useState([]);
@@ -17,7 +18,23 @@ export default function Home() {
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
+  const [currentFrameAnalysis, setCurrentFrameAnalysis] = useState<string>('');
   const playerRef = useRef<HTMLIFrameElement>(null);
+
+  // Function to analyze frame at current timestamp
+  const analyzeCurrentFrame = async () => {
+    if (!selectedVideoId) return;
+
+    try {
+      const thumbnailUrl = getVideoThumbnailUrl(selectedVideoId, currentTime);
+      const analysis = await processVideoFrame(thumbnailUrl, currentTime);
+      if (analysis.shouldProcess && analysis.description) {
+        setCurrentFrameAnalysis(analysis.description);
+      }
+    } catch (error) {
+      console.error('Error analyzing frame:', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedVideoId) {
@@ -33,24 +50,9 @@ export default function Home() {
       }
     };
     updateTranscript();
-  }, [transcript, currentTime]);
-
-  const handleSearch = async (query: string) => {
-    const results = await searchVideos(query);
-    setVideos(results);
-    setSelectedVideoId(null);
-    setTranscript([]);
-    setCurrentTime(0);
-    setCurrentTranscript('');
-  };
-
-  const handleVideoSelect = async (videoId: string) => {
-    setSelectedVideoId(videoId);
-    const videoDetails = await getVideoDetails(videoId);
-    if (videoDetails?.snippet?.title) {
-      setVideoTitle(videoDetails.snippet.title);
-    }
-  };
+    // Also analyze the current frame when time updates
+    analyzeCurrentFrame();
+  }, [transcript, currentTime, selectedVideoId]);
 
   const handleTimeUpdate = (event: MessageEvent) => {
     if (event.data && typeof event.data === 'object' && 'event' in event.data) {
@@ -91,6 +93,7 @@ export default function Home() {
         videoTitle,
         currentTranscript,
         currentTime,
+        imageContext: currentFrameAnalysis
       });
       setMessages(prev => [...prev, { text: response, isUser: false }]);
     } catch (error) {
@@ -101,6 +104,23 @@ export default function Home() {
       }]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSearch = async (query: string) => {
+    const results = await searchVideos(query);
+    setVideos(results);
+    setSelectedVideoId(null);
+    setTranscript([]);
+    setCurrentTime(0);
+    setCurrentTranscript('');
+  };
+
+  const handleVideoSelect = async (videoId: string) => {
+    setSelectedVideoId(videoId);
+    const videoDetails = await getVideoDetails(videoId);
+    if (videoDetails?.snippet?.title) {
+      setVideoTitle(videoDetails.snippet.title);
     }
   };
 
