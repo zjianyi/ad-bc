@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { useChat } from 'ai/react';
 import SearchBar from './components/SearchBar';
@@ -19,16 +19,81 @@ export default function Home() {
   const playerRef = useRef<HTMLIFrameElement>(null);
   const ytPlayerRef = useRef<YT.Player | null>(null);
   const playerInitialized = useRef(false);
+  const [messages, setMessages] = useState<{role: string; content: string; id: string}[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
-    api: '/api/chat',
-    body: {
-      videoTitle,
-      currentTranscript,
-      currentTime,
-      imageContext: currentFrameAnalysis
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = input;
+    setInput('');
+    const newMessages = [...messages, { role: 'user', content: userMessage, id: Date.now().toString() }];
+    setMessages(newMessages);
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          body: {
+            videoTitle,
+            currentTranscript,
+            currentTime,
+            imageContext: currentFrameAnalysis
+          }
+        })
+      });
+
+      if (!response.ok) throw new Error(response.statusText);
+
+      // This is the message we'll build up
+      let currentMessage = { role: 'assistant', content: '', id: (Date.now() + 1).toString() };
+      setMessages(msgs => [...msgs, currentMessage]);
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) throw new Error('No reader available');
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') break;
+            
+            try {
+              const { text } = JSON.parse(data);
+              currentMessage.content += text;
+              setMessages(msgs => msgs.map(msg => 
+                msg.id === currentMessage.id ? currentMessage : msg
+              ));
+            } catch (e) {
+              console.error('Error parsing chunk:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in chat:', error);
+      setMessages(msgs => [...msgs, { 
+        role: 'assistant', 
+        content: 'Sorry, I encountered an error. Please try again.',
+        id: Date.now().toString()
+      }]);
+    } finally {
+      setIsLoading(false);
     }
-  });
+  }, [input, isLoading, messages, videoTitle, currentTranscript, currentTime, currentFrameAnalysis]);
 
   // Initialize YouTube API
   useEffect(() => {
@@ -194,7 +259,7 @@ export default function Home() {
                   <input
                     type="text"
                     value={input}
-                    onChange={handleInputChange}
+                    onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask a question about the video..."
                     className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500"
                     disabled={isLoading}
