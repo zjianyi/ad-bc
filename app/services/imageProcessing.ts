@@ -74,7 +74,7 @@ export async function processVideoFrame(imageUrl: string, timestamp: number): Pr
 }
 
 // Clean up function to be called when video playback ends
-export function cleanupImageProcessing() {
+export async function cleanupImageProcessing() {
   if (previousImageTensor) {
     previousImageTensor.dispose();
     previousImageTensor = null;

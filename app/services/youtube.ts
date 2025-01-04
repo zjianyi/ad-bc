@@ -149,7 +149,7 @@ export async function findTranscriptSegmentAtTime(transcript: TranscriptSegment[
   ) || null;
 }
 
-export function getVideoThumbnailUrl(videoId: string, timestamp: number): string {
+export async function getVideoThumbnailUrl(videoId: string, timestamp: number): Promise<string> {
   // Get the storyboard thumbnail that's closest to the current timestamp
   // YouTube provides thumbnails at various quality levels: default, mqdefault, hqdefault, maxresdefault
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;

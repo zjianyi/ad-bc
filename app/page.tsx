@@ -26,7 +26,7 @@ export default function Home() {
     if (!selectedVideoId) return;
 
     try {
-      const thumbnailUrl = getVideoThumbnailUrl(selectedVideoId, currentTime);
+      const thumbnailUrl = await getVideoThumbnailUrl(selectedVideoId, currentTime);
       const analysis = await processVideoFrame(thumbnailUrl, currentTime);
       if (analysis.shouldProcess && analysis.description) {
         setCurrentFrameAnalysis(analysis.description);
