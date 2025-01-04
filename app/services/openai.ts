@@ -45,7 +45,7 @@ ${context.currentTranscript ? '🗣 Current segment: ' + context.currentTranscri
   });
 
   const stream = await openai.chat.completions.create({
-    model: 'gpt-4-vision-preview',
+    model: 'gpt-4o-mini',
     messages,
     temperature: 0.7,
     max_tokens: 500,

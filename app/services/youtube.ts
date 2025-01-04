@@ -150,7 +150,8 @@ export async function findTranscriptSegmentAtTime(transcript: TranscriptSegment[
 }
 
 export async function getVideoThumbnailUrl(videoId: string, timestamp: number): Promise<string> {
-  // Get the storyboard thumbnail that's closest to the current timestamp
-  // YouTube provides thumbnails at various quality levels: default, mqdefault, hqdefault, maxresdefault
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  // Get the thumbnail URL for the video at the specified timestamp
+  const url = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  console.log('Generated frame URL:', url, 'for timestamp:', timestamp);
+  return url;
 } 

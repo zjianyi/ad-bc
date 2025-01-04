@@ -1,8 +1,7 @@
 'use client';
 import React from 'react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
-import { useChat } from 'ai/react';
 import SearchBar from './components/SearchBar';
 import VideoList from './components/VideoList';
 import { searchVideos, getVideoDetails, getVideoTranscript, findTranscriptSegmentAtTime, type TranscriptSegment, getVideoThumbnailUrl } from './services/youtube';
@@ -16,14 +15,58 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
   const [currentFrameAnalysis, setCurrentFrameAnalysis] = useState<string>('');
-  const playerRef = useRef<HTMLIFrameElement>(null);
-  const ytPlayerRef = useRef<YT.Player | null>(null);
-  const playerInitialized = useRef(false);
   const [messages, setMessages] = useState<{role: string; content: string; id: string}[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const playerRef = useRef<HTMLIFrameElement>(null);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  // Handle iframe messages for time updates
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== "https://www.youtube.com") return;
+      
+      try {
+        const data = JSON.parse(event.data);
+        if (data.info?.currentTime) {
+          console.log('Time update:', data.info.currentTime); // Debug log
+          setCurrentTime(data.info.currentTime);
+        }
+      } catch (e) {
+        // Ignore parse errors from non-JSON messages
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Update transcript and analyze frame when time changes
+  useEffect(() => {
+    if (!currentTime || !selectedVideoId) return;
+
+    const updateTranscript = async () => {
+      if (!transcript.length) return;
+      
+      const currentSegment = await findTranscriptSegmentAtTime(transcript, currentTime);
+      if (currentSegment) {
+        setCurrentTranscript(currentSegment.text);
+      }
+    };
+
+    const updateCurrentFrame = async () => {
+      try {
+        const thumbnailUrl = await getVideoThumbnailUrl(selectedVideoId, Math.floor(currentTime));
+        setCurrentFrameAnalysis(thumbnailUrl);
+      } catch (error) {
+        console.error('Error getting frame:', error);
+      }
+    };
+
+    updateTranscript();
+    updateCurrentFrame();
+  }, [currentTime, transcript, selectedVideoId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
@@ -42,7 +85,7 @@ export default function Home() {
           body: {
             videoTitle,
             currentTranscript,
-            currentTime,
+            currentTime: Math.floor(currentTime),
             imageContext: currentFrameAnalysis
           }
         })
@@ -93,55 +136,6 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-  }, [input, isLoading, messages, videoTitle, currentTranscript, currentTime, currentFrameAnalysis]);
-
-  // Initialize YouTube API
-  useEffect(() => {
-    if (!playerInitialized.current) {
-      // Load YouTube IFrame API
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-
-      // Initialize player when API is ready
-      window.onYouTubeIframeAPIReady = () => {
-        if (selectedVideoId && playerRef.current) {
-          ytPlayerRef.current = new window.YT.Player(playerRef.current, {
-            events: {
-              onStateChange: (event: YT.OnStateChangeEvent) => {
-                if (event.data === window.YT.PlayerState.PLAYING) {
-                  // Update time every second while playing
-                  const interval = setInterval(() => {
-                    if (ytPlayerRef.current) {
-                      const time = ytPlayerRef.current.getCurrentTime();
-                      setCurrentTime(time);
-                    }
-                  }, 1000);
-                  return () => clearInterval(interval);
-                }
-              }
-            }
-          });
-        }
-      };
-      playerInitialized.current = true;
-    }
-  }, [selectedVideoId]);
-
-  // Function to analyze frame at current timestamp
-  const analyzeCurrentFrame = async () => {
-    if (!selectedVideoId) return;
-
-    try {
-      const thumbnailUrl = await getVideoThumbnailUrl(selectedVideoId, currentTime);
-      const analysis = await processVideoFrame(thumbnailUrl);
-      if (analysis.shouldProcess && analysis.imageUrl) {
-        setCurrentFrameAnalysis(analysis.imageUrl);
-      }
-    } catch (error) {
-      console.error('Error analyzing frame:', error);
-    }
   };
 
   useEffect(() => {
@@ -149,18 +143,6 @@ export default function Home() {
       getVideoTranscript(selectedVideoId).then(setTranscript);
     }
   }, [selectedVideoId]);
-
-  useEffect(() => {
-    const updateTranscript = async () => {
-      const currentSegment = await findTranscriptSegmentAtTime(transcript, currentTime);
-      if (currentSegment) {
-        setCurrentTranscript(currentSegment.text);
-      }
-    };
-    updateTranscript();
-    // Also analyze the current frame when time updates
-    analyzeCurrentFrame();
-  }, [transcript, currentTime, selectedVideoId]);
 
   const handleSearch = async (query: string) => {
     const results = await searchVideos(query);
@@ -212,7 +194,7 @@ export default function Home() {
                   ref={playerRef}
                   width="100%"
                   height="100%"
-                  src={`https://www.youtube.com/embed/${selectedVideoId}?enablejsapi=1`}
+                  src={`https://www.youtube.com/embed/${selectedVideoId}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}&autoplay=1&controls=1&modestbranding=1&rel=0&showinfo=0&playsinline=1`}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="rounded-lg shadow-lg"

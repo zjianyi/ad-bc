@@ -10,6 +10,13 @@ export async function POST(req: Request) {
   const { messages, body } = await req.json();
   const lastMessage = messages[messages.length - 1];
 
+  console.log('Processing chat request:', {
+    videoTitle: body.videoTitle,
+    currentTime: body.currentTime,
+    hasTranscript: !!body.currentTranscript,
+    hasImage: !!body.imageContext
+  });
+
   const systemMessage = `You are an advanced AI tutor with real-time access to the video content the user is watching. You can:
 1. See what's happening in the video through the current frame
 2. Read the transcript at any timestamp
@@ -25,6 +32,7 @@ ${body.currentTranscript ? '🗣 Current segment: ' + body.currentTranscript : '
 
   // Add the image if available
   if (body.imageContext) {
+    console.log('Adding image context:', body.imageContext);
     apiMessages.push({
       role: 'user',
       content: [
