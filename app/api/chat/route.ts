@@ -41,7 +41,7 @@ ${body.currentTranscript ? '🗣 Current segment: ' + body.currentTranscript : '
   });
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-4-0125-preview',
+    model: 'gpt-4o-mini-2024-07-18',
     messages: apiMessages,
     temperature: 0.7,
     max_tokens: 500,
