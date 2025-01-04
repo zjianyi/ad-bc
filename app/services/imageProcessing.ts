@@ -1,7 +1,8 @@
 "use server";
 
-import * as tf from '@tensorflow/tfjs-node';
-const Jimp = require('jimp');
+import * as tf from '@tensorflow/tfjs';
+import sharp from 'sharp';
+import './tfjs-setup';
 
 const SIMILARITY_THRESHOLD = 0.85; // Adjust this value to control sensitivity
 let previousImageTensor: tf.Tensor | null = null;
@@ -17,11 +18,17 @@ export async function processVideoFrame(imageUrl: string, timestamp: number): Pr
     }
     lastProcessedTime = currentTime;
 
-    // Load and preprocess image
-    const image = await Jimp.read(imageUrl);
-    image.resize(224, 224); // Resize to standard input size
-    const imageData = new Float32Array(image.bitmap.data);
-    const currentImageTensor = tf.tensor4d(imageData, [1, 224, 224, 4]);
+    // Load and process image using sharp
+    const response = await fetch(imageUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const processedImage = await sharp(Buffer.from(arrayBuffer))
+      .resize(224, 224)
+      .raw()
+      .toBuffer();
+
+    // Convert to tensor
+    const imageData = new Float32Array(processedImage);
+    const currentImageTensor = tf.tensor4d(imageData, [1, 224, 224, 3]);
 
     // If this is the first frame, always process it
     if (!previousImageTensor) {
