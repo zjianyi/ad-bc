@@ -2,24 +2,66 @@
 import React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
+import { useChat } from 'ai/react';
 import SearchBar from './components/SearchBar';
 import VideoList from './components/VideoList';
 import { searchVideos, getVideoDetails, getVideoTranscript, findTranscriptSegmentAtTime, type TranscriptSegment, getVideoThumbnailUrl } from './services/youtube';
-import { getChatResponse } from './services/openai';
 import { processVideoFrame } from './services/imageProcessing';
 
 export default function Home() {
   const [videos, setVideos] = useState([]);
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
   const [videoTitle, setVideoTitle] = useState<string>('');
-  const [messages, setMessages] = useState<{text: string, isUser: boolean}[]>([]);
-  const [inputMessage, setInputMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [currentTranscript, setCurrentTranscript] = useState<string>('');
   const [currentFrameAnalysis, setCurrentFrameAnalysis] = useState<string>('');
   const playerRef = useRef<HTMLIFrameElement>(null);
+  const playerInitialized = useRef(false);
+
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({
+    api: '/api/chat',
+    body: {
+      videoTitle,
+      currentTranscript,
+      currentTime,
+      imageContext: currentFrameAnalysis
+    }
+  });
+
+  // Initialize YouTube API
+  useEffect(() => {
+    if (!playerInitialized.current) {
+      // Load YouTube IFrame API
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+
+      // Initialize player when API is ready
+      window.onYouTubeIframeAPIReady = () => {
+        if (selectedVideoId && playerRef.current) {
+          new window.YT.Player(playerRef.current, {
+            events: {
+              onStateChange: (event: any) => {
+                if (event.data === window.YT.PlayerState.PLAYING) {
+                  // Update time every second while playing
+                  const interval = setInterval(() => {
+                    if (playerRef.current) {
+                      const time = playerRef.current.getCurrentTime();
+                      setCurrentTime(time);
+                    }
+                  }, 1000);
+                  return () => clearInterval(interval);
+                }
+              }
+            }
+          });
+        }
+      };
+      playerInitialized.current = true;
+    }
+  }, [selectedVideoId]);
 
   // Function to analyze frame at current timestamp
   const analyzeCurrentFrame = async () => {
@@ -53,59 +95,6 @@ export default function Home() {
     // Also analyze the current frame when time updates
     analyzeCurrentFrame();
   }, [transcript, currentTime, selectedVideoId]);
-
-  const handleTimeUpdate = (event: MessageEvent) => {
-    if (event.data && typeof event.data === 'object' && 'event' in event.data) {
-      if (event.data.event === 'onStateChange' && event.data.info === 1) {
-        // Video is playing
-        const getCurrentTime = () => {
-          if (playerRef.current && playerRef.current.contentWindow) {
-            playerRef.current.contentWindow.postMessage(
-              JSON.stringify({ event: 'listening' }), 
-              '*'
-            );
-          }
-        };
-        setInterval(getCurrentTime, 1000);
-      }
-    }
-    if (event.data && typeof event.data === 'object' && 'info' in event.data) {
-      setCurrentTime(event.data.info);
-    }
-  };
-
-  useEffect(() => {
-    window.addEventListener('message', handleTimeUpdate);
-    return () => window.removeEventListener('message', handleTimeUpdate);
-  }, []);
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputMessage.trim() || isLoading) return;
-
-    const userMessage = inputMessage;
-    setInputMessage('');
-    setMessages(prev => [...prev, { text: userMessage, isUser: true }]);
-    setIsLoading(true);
-
-    try {
-      const response = await getChatResponse(userMessage, {
-        videoTitle,
-        currentTranscript,
-        currentTime,
-        imageContext: currentFrameAnalysis
-      });
-      setMessages(prev => [...prev, { text: response, isUser: false }]);
-    } catch (error) {
-      console.error('Error getting AI response:', error);
-      setMessages(prev => [...prev, { 
-        text: 'Sorry, I encountered an error. Please try again.',
-        isUser: false 
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleSearch = async (query: string) => {
     const results = await searchVideos(query);
@@ -176,19 +165,19 @@ export default function Home() {
             <div className="lg:col-span-4">
               <div className="bg-gray-50 rounded-lg p-4 h-[600px] flex flex-col">
                 <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-                  {messages.map((msg, idx) => (
+                  {messages.map((msg) => (
                     <div
-                      key={idx}
-                      className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'}`}
+                      key={msg.id}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
                         className={`rounded-lg px-4 py-2 max-w-[80%] ${
-                          msg.isUser
+                          msg.role === 'user'
                             ? 'bg-blue-500 text-white'
                             : 'bg-gray-200 text-gray-800'
                         }`}
                       >
-                        {msg.text}
+                        {msg.content}
                       </div>
                     </div>
                   ))}
@@ -200,11 +189,11 @@ export default function Home() {
                     </div>
                   )}
                 </div>
-                <form onSubmit={handleSendMessage} className="flex gap-2">
+                <form onSubmit={handleSubmit} className="flex gap-2">
                   <input
                     type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
+                    value={input}
+                    onChange={handleInputChange}
                     placeholder="Ask a question about the video..."
                     className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:border-blue-500"
                     disabled={isLoading}

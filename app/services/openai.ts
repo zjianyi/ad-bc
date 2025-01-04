@@ -1,5 +1,7 @@
 "use server";
 
+import { OpenAIStream, StreamingTextResponse } from 'ai';
+
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || process.env.NEXT_PUBLIC_OPENAI_API_KEY;
 
 if (!OPENAI_API_KEY) {
@@ -46,8 +48,6 @@ const functions = [
 
 export async function getChatResponse(message: string, context: ChatContext) {
   try {
-    console.log('Making request to OpenAI with key:', OPENAI_API_KEY?.slice(0, 10) + '...');
-    
     const systemMessage = `You are an advanced AI tutor with real-time access to the video content the user is watching. You can:
 1. See what's happening in the video through frame analysis
 2. Read the transcript at any timestamp
@@ -81,90 +81,22 @@ Use this information to provide detailed, contextual explanations. If you need t
         functions,
         function_call: 'auto',
         temperature: 0.7,
-        max_tokens: 500
+        max_tokens: 500,
+        stream: true
       })
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      console.error('OpenAI API error response:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      });
-      throw new Error(`OpenAI API error: ${response.status} - ${errorData?.error?.message || response.statusText}`);
-    }
-
-    const data = await response.json();
-    console.log('OpenAI API response:', data);
+    // Create a stream from the response
+    const stream = OpenAIStream(response);
     
-    // Handle function calls
-    if (data.choices?.[0]?.message?.function_call) {
-      const functionCall = data.choices[0].message.function_call;
-      const args = JSON.parse(functionCall.arguments);
-
-      let functionResult;
-      if (functionCall.name === 'analyze_video_frame') {
-        // Get frame analysis at the specified timestamp
-        functionResult = context.imageContext || 'No visual context available for this timestamp';
-      } else if (functionCall.name === 'get_transcript_segment') {
-        // Get transcript at the specified timestamp
-        functionResult = context.currentTranscript || 'No transcript available for this timestamp';
-      }
-
-      // Make a follow-up call to OpenAI with the function result
-      const followUpResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [
-            {
-              role: 'system',
-              content: systemMessage
-            },
-            {
-              role: 'user',
-              content: message
-            },
-            {
-              role: 'assistant',
-              content: null,
-              function_call: functionCall
-            },
-            {
-              role: 'function',
-              name: functionCall.name,
-              content: JSON.stringify(functionResult)
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 500
-        })
-      });
-
-      const followUpData = await followUpResponse.json();
-      if (!followUpData.choices?.[0]?.message?.content) {
-        throw new Error('Invalid response format from OpenAI API in function call');
-      }
-
-      return followUpData.choices[0].message.content;
-    }
-
-    if (!data.choices?.[0]?.message?.content) {
-      throw new Error('Invalid response format from OpenAI API');
-    }
-
-    return data.choices[0].message.content;
+    // Return a streaming response
+    return new StreamingTextResponse(stream);
   } catch (error) {
     console.error('Detailed error in getChatResponse:', error);
     if (error instanceof Error) {
-      return `Error: ${error.message}`;
+      return new Response(`Error: ${error.message}`);
     }
-    return 'Sorry, I encountered an error processing your request.';
+    return new Response('Sorry, I encountered an error processing your request.');
   }
 }
 
