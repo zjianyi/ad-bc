@@ -70,9 +70,9 @@ export default function Home() {
 
     try {
       const thumbnailUrl = await getVideoThumbnailUrl(selectedVideoId, currentTime);
-      const analysis = await processVideoFrame(thumbnailUrl, currentTime);
-      if (analysis.shouldProcess && analysis.description) {
-        setCurrentFrameAnalysis(analysis.description);
+      const analysis = await processVideoFrame(thumbnailUrl);
+      if (analysis.shouldProcess && analysis.imageUrl) {
+        setCurrentFrameAnalysis(analysis.imageUrl);
       }
     } catch (error) {
       console.error('Error analyzing frame:', error);
